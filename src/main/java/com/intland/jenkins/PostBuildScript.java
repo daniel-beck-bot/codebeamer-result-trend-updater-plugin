@@ -84,7 +84,7 @@ public class PostBuildScript extends Notifier {
 
         @Override
         public String getDisplayName() {
-            return "Codebeamer result trend updater ";
+            return "Codebeamer Test Results Trend Updater";
         }
 
         @Override
