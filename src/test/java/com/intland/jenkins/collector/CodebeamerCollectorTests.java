@@ -63,7 +63,7 @@ public class CodebeamerCollectorTests {
                 "|__Repository__\n|Unsupported SCM\n}] \n";
 
         long currentTime = 75000l;
-        CodebeamerDto codebeamerDto = CodebeamerCollector.collectCodebeamerData(build, listener, apiClient, currentTime);
+        CodebeamerDto codebeamerDto = CodebeamerCollector.collectCodebeamerData(build, listener, apiClient, currentTime, null);
         Assert.assertEquals(expectedMarkup, codebeamerDto.getMarkup());
     }
 
