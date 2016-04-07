@@ -18,10 +18,12 @@ public class CodebeamerCollector {
     private static final String TESTREPORT_ATTACHMENT_NAME = "jenkinsbuildtrends.csv";
     private static final String PERFORMANCE_ATTACHMENT_NAME = "jenkinsperformancetrends.csv";
     private static final String TESTREPORT_DEFAULT_MARKUP = "[{JenkinsBuildTrends}]";
-    private static final String PERFORMANCE_DEFAULT_MARKUP= "[{JenkinsPerformanceTrends}]";
+    private static final String PERFORMANCE_DEFAULT_MARKUP = "[{JenkinsPerformanceTrends}]";
+    private static final String START_OF_BUILD = "//DO NOT MODIFY";
+    private static final int DEFAULT_KEEP_BUILD_NUMBER = 50;
 
-    public static CodebeamerDto collectCodebeamerData(AbstractBuild<?, ?> build, BuildListener listener,
-                                                      CodebeamerApiClient apiClient, long currentTime) throws IOException {
+    public static CodebeamerDto collectCodebeamerData(AbstractBuild<?, ?> build, BuildListener listener, CodebeamerApiClient apiClient,
+                                                      long currentTime, Integer keepBuildNumber) throws IOException {
         String currentMarkupContent = apiClient.getWikiMarkup();
 
         String newMarkupContent;
@@ -30,6 +32,8 @@ public class CodebeamerCollector {
 
         BuildDto buildDto = BuildDataCollector.collectBuildData(build, currentTime);
         ScmDto scmDto = ScmDataCollector.collectScmData(build, apiClient);
+
+        currentMarkupContent = truncateWikiMarkup(currentMarkupContent, keepBuildNumber);
 
         if (PluginUtil.isPerformancePluginInstalled() && build.getAction(PerformanceBuildAction.class) != null) {
             attachmentName = PERFORMANCE_ATTACHMENT_NAME;
@@ -63,6 +67,34 @@ public class CodebeamerCollector {
         markupBuilder.insert(markupBuilder.indexOf("}]") + 2, newMarkupContent);
 
         return new CodebeamerDto(markupBuilder.toString(), newAttachmentContent, attachmentName);
+    }
+
+    private static String truncateWikiMarkup(String currentMarkupContent, Integer keepBuildNumber) {
+        int keepBuilds;
+        if (keepBuildNumber == null) {
+            keepBuilds = DEFAULT_KEEP_BUILD_NUMBER;
+        } else {
+            keepBuilds = keepBuildNumber.intValue();
+        }
+
+        if (keepBuilds > 0) {
+            int lastIndex = 0;
+            int count = 0;
+
+            while(lastIndex != -1){
+                lastIndex = currentMarkupContent.indexOf(START_OF_BUILD, lastIndex + 1);
+
+                if(lastIndex != -1){
+                    count++;
+
+                    if (count >= keepBuilds) {
+                        return currentMarkupContent.substring(0, lastIndex);
+                    }
+                }
+            }
+        }
+
+        return currentMarkupContent;
     }
 
     public static String insertChartIfNoPluginPresent(String currentMarkup, String defaultMarkup) {

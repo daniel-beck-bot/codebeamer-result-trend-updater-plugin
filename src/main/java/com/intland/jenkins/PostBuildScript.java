@@ -16,7 +16,9 @@ import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
+import hudson.util.FormValidation;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.QueryParameter;
 
 import java.io.IOException;
 import java.util.regex.Matcher;
@@ -27,6 +29,7 @@ public class PostBuildScript extends Notifier {
     private String wikiUri;
     private String username;
     private String password;
+    private Integer keepBuildNumber;
 
     @Override
     public BuildStepMonitor getRequiredMonitorService() {
@@ -34,10 +37,11 @@ public class PostBuildScript extends Notifier {
     }
 
     @DataBoundConstructor
-    public PostBuildScript(String wikiUri, String username, String password) {
+    public PostBuildScript(String wikiUri, String username, String password, Integer keepBuildNumber) {
         this.wikiUri = wikiUri;
         this.username = username;
         this.password = password;
+        this.keepBuildNumber = keepBuildNumber;
     }
 
     @Override
@@ -55,7 +59,7 @@ public class PostBuildScript extends Notifier {
         CodebeamerApiClient apiClient = new CodebeamerApiClient(username, password, url, wikiId);
 
         long currentTime = System.currentTimeMillis();
-        CodebeamerDto codebeamerDto = CodebeamerCollector.collectCodebeamerData(build, listener, apiClient, currentTime);
+        CodebeamerDto codebeamerDto = CodebeamerCollector.collectCodebeamerData(build, listener, apiClient, currentTime, keepBuildNumber);
 
         listener.getLogger().println("Starting wiki update");
         apiClient.updateWikiMarkup(url, wikiId, codebeamerDto.getMarkup());
@@ -78,6 +82,9 @@ public class PostBuildScript extends Notifier {
         return password;
     }
 
+    public Integer getKeepBuildNumber() {
+        return keepBuildNumber;
+    }
 
     @Extension
     public static class DescriptorImpl extends BuildStepDescriptor<Publisher> {
