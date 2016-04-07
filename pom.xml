@@ -32,7 +32,7 @@
 
   <scm>
     <connection>scm:git:https://github.com/jenkinsci/codebeamer-result-trend-updater-plugin.git</connection>
-    <developerConnection>scm:git:ssh://git@github.com/jenkinsci/codebeamer-result-trend-updater-plugin.git</developerConnection>
+    <developerConnection>scm:git:https://github.com/jenkinsci/codebeamer-result-trend-updater-plugin.git</developerConnection>
     <url>https://github.com/jenkinsci/codebeamer-result-trend-updater-plugin</url>
     <tag>HEAD</tag>
   </scm>
