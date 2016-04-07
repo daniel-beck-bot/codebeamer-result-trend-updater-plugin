@@ -10,31 +10,56 @@ import hudson.model.AbstractBuild;
 import hudson.model.BuildListener;
 import hudson.model.Run;
 import hudson.tasks.test.AbstractTestResultAction;
+import hudson.tasks.test.AggregatedTestResultAction;
 import hudson.tasks.test.TestResult;
+
+import java.util.List;
 
 public class TestResultCollector {
     public static TestResultDto collectTestResultData(AbstractBuild<?, ?> build, BuildListener listener) {
         String formattedTestDuration = "";
         int totalCount = 0;
         int failCount = 0;
+        int lastFailCount = 0;
         String failedDifference = "";
         long testDuration = 0l;
 
-        AbstractTestResultAction<?> action = build.getAction(AbstractTestResultAction.class);
-        if (action != null) {
-            TestResult testResult = (TestResult) action.getResult();
-            TestResult lastTestResult = getPreviousTestResult(build);
+        AbstractTestResultAction action = build.getAction(AbstractTestResultAction.class);
+        Object lastTestResult = getPreviousTestResult(build);
+        if (action != null && action.getResult() != null) {
+            if (action.getResult() instanceof List) { // aggregateResult
+                List<AggregatedTestResultAction.ChildReport> childReports = (List<AggregatedTestResultAction.ChildReport>) action.getResult();
+                for (AggregatedTestResultAction.ChildReport childReport : childReports) {
+                    TestResult testResult = (TestResult) childReport.result;
+                    testDuration += new Float(testResult.getDuration() * 1000).longValue();
+                    totalCount += testResult.getTotalCount();
+                    failCount += testResult.getFailCount();
+                }
 
-            testDuration = new Float(testResult.getDuration() * 1000).longValue();
-            formattedTestDuration = TimeUtil.formatMillisIntoMinutesAndSeconds(testDuration);
-            totalCount = testResult.getTotalCount();
-            failCount = testResult.getFailCount();
+                if (lastTestResult != null) {
+                    childReports = (List<AggregatedTestResultAction.ChildReport>) lastTestResult;
+                    for (AggregatedTestResultAction.ChildReport childReport : childReports) {
+                        TestResult testResult = (TestResult) childReport.result;
+                        lastFailCount += testResult.getFailCount();
+                    }
+                }
 
-            if (lastTestResult != null) {
-                failedDifference = failDifference(testResult, lastTestResult);
+                formattedTestDuration = TimeUtil.formatMillisIntoMinutesAndSeconds(testDuration);
+            } else if (action.getResult() instanceof TestResult)  { // junit result
+                TestResult testResult = (TestResult) action.getResult();
+                testDuration = new Float(testResult.getDuration() * 1000).longValue();
+                formattedTestDuration = TimeUtil.formatMillisIntoMinutesAndSeconds(testDuration);
+                totalCount = testResult.getTotalCount();
+                failCount = testResult.getFailCount();
+
+                if (lastTestResult != null) {
+                    lastFailCount = ((TestResult) lastTestResult).getFailCount();
+                }
             } else {
-                listener.getLogger().println("No previous build has been found with a test run");
+                listener.getLogger().println("This build does not have a supported test run type");
             }
+
+            failedDifference = failDifference(failCount, lastFailCount);
         } else {
             listener.getLogger().println("This build does not have a test run");
         }
@@ -42,8 +67,8 @@ public class TestResultCollector {
         return new TestResultDto(formattedTestDuration, totalCount, failCount, failedDifference, testDuration);
     }
 
-    private static TestResult getPreviousTestResult(AbstractBuild build) {
-        TestResult result = null;
+    private static Object getPreviousTestResult(AbstractBuild build) {
+        AbstractTestResultAction result = null;
 
         int counter = build.getNumber();
         while (result == null && counter > 0) {
@@ -55,28 +80,23 @@ public class TestResultCollector {
             }
 
             AbstractTestResultAction candidateTestResultAction = candidateBuild.getAction(AbstractTestResultAction.class);
-            if (candidateTestResultAction !=  null) {
-                result = (TestResult) candidateTestResultAction.getResult();
-                break;
+            if (candidateTestResultAction != null) {
+                return candidateTestResultAction.getResult();
             }
         }
-        return result;
+        return null;
     }
 
-    private static String failDifference(TestResult testResult1, TestResult testResult2) {
-        if (testResult1 == null || testResult2 == null) {
-            return " - ?";
-        }
-
+    private static String failDifference(int failCount1, int failCount2) {
         String sign;
-        if (testResult1.getFailCount() > testResult2.getFailCount()) {
+        if (failCount1 > failCount2) {
             sign = "+";
-        } else if (testResult1.getFailCount() < testResult2.getFailCount()) {
+        } else if (failCount1 < failCount2) {
             sign = "-";
         } else {
             sign = "±";
         }
 
-        return sign + Math.abs(testResult1.getFailCount() - testResult2.getFailCount());
+        return sign + Math.abs(failCount1 - failCount2);
     }
 }
