@@ -2,4 +2,4 @@
 .idea/
 target/
 work/
-
+.DS_Store
