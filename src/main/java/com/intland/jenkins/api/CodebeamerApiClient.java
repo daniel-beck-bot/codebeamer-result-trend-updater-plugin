@@ -7,8 +7,13 @@ package com.intland.jenkins.api;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intland.jenkins.api.dto.AttachmentDto;
 import com.intland.jenkins.api.dto.MarkupDto;
+import com.intland.jenkins.api.dto.RepositoryDto;
 import com.intland.jenkins.api.dto.UserDto;
+import jcifs.util.Base64;
+import org.apache.commons.io.Charsets;
+import org.apache.http.Header;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
@@ -26,10 +31,12 @@ import org.apache.http.entity.mime.content.FileBody;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.message.BasicHeader;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.HashSet;
 
 public class CodebeamerApiClient {
     private final int HTTP_TIMEOUT = 10000;
@@ -44,12 +51,23 @@ public class CodebeamerApiClient {
         wikiId = wikiIdentifier;
         baseUrl = url;
 
-        CredentialsProvider provider = getCredentialsProvider(username, password);
-        client = HttpClientBuilder.create().setDefaultCredentialsProvider(provider).build();
-        requestConfig = RequestConfig.custom().setConnectionRequestTimeout(HTTP_TIMEOUT)
-                                                .setConnectTimeout(HTTP_TIMEOUT)
-                                                .setSocketTimeout(HTTP_TIMEOUT)
-                                                .build();
+        // initialize rest client
+        // http://stackoverflow.com/questions/9539141/httpclient-sends-out-two-requests-when-using-basic-auth
+        final String authHeader = "Basic " + Base64.encode((username + ":" + password).getBytes(Charsets.UTF_8));
+
+        HashSet<Header> defaultHeaders = new HashSet<Header>();
+        defaultHeaders.add(new BasicHeader(HttpHeaders.AUTHORIZATION, authHeader));
+
+        client = HttpClientBuilder
+                .create()
+                .setDefaultHeaders(defaultHeaders)
+                .build();
+        requestConfig = RequestConfig
+                .custom()
+                .setConnectionRequestTimeout(HTTP_TIMEOUT)
+                .setConnectTimeout(HTTP_TIMEOUT)
+                .setSocketTimeout(HTTP_TIMEOUT)
+                .build();
     }
 
     public void createOrUpdateAttachment(String attachmentName, String newAttachmentContent) throws IOException {
@@ -96,6 +114,44 @@ public class CodebeamerApiClient {
         }
 
         return result;
+    }
+
+    public String getCodeBeamerRepoUrlForGit(String repoUrl) throws IOException {
+        // Name of Git repository is the string after the last /
+        String[] segments = repoUrl.split("/");
+        String name = segments[segments.length - 1];
+        try {
+            String requestUrl = String.format("%s/git/%s", baseUrl, name);
+            String json = get(requestUrl);
+            if (json != null) {
+                RepositoryDto repositoryDto = objectMapper.readValue(json, RepositoryDto.class);
+                return String.format("[%s%s]", baseUrl, repositoryDto.getUri());
+            }
+        } catch (IOException ex) {
+            // TODO: logging
+        }
+        return "not managed by codeBeamer";
+    }
+
+    public String getCodeBeamerRepoUrlForSVN(String remote) {
+        // We don't now for sure which part of the string is the name of the repository so we have to try until we succeed
+        String[] segments = remote.split("/");
+        // 0 = 'svn:' or 'http(s):', 1 = '', 2 = hostname
+        for (int i = 3; i < segments.length; ++i) {
+            String segment = segments[i];
+            try {
+                String requestUrl = String.format("%s/svn/%s", baseUrl, segment);
+                String json = get(requestUrl);
+                if (json == null) {
+                    continue;
+                }
+                RepositoryDto repositoryDto = objectMapper.readValue(json, RepositoryDto.class);
+                return String.format("[%s%s]", baseUrl, repositoryDto.getUri());
+            } catch (IOException ex) {
+                continue;
+            }
+        }
+        return "not managed by codeBeamer";
     }
 
     private String getAttachmentId(String attachmentName) throws IOException {
