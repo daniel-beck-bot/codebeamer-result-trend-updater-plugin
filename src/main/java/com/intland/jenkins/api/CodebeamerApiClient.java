@@ -4,20 +4,16 @@
 
 package com.intland.jenkins.api;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.intland.jenkins.api.dto.AttachmentDto;
-import com.intland.jenkins.api.dto.MarkupDto;
-import com.intland.jenkins.api.dto.RepositoryDto;
-import com.intland.jenkins.api.dto.UserDto;
-import jcifs.util.Base64;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.HashSet;
+
 import org.apache.commons.io.Charsets;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
-import org.apache.http.auth.AuthScope;
-import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
@@ -28,15 +24,17 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.entity.mime.HttpMultipartMode;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.FileBody;
-import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.BasicResponseHandler;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicHeader;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.util.HashSet;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intland.jenkins.api.dto.AttachmentDto;
+import com.intland.jenkins.api.dto.MarkupDto;
+import com.intland.jenkins.api.dto.RepositoryDto;
+import com.intland.jenkins.api.dto.UserDto;
+
+import jcifs.util.Base64;
 
 public class CodebeamerApiClient {
     private final int HTTP_TIMEOUT = 10000;
@@ -82,7 +80,7 @@ public class CodebeamerApiClient {
 
     public String getWikiMarkup() throws IOException {
         String tmpUrl = String.format("%s/rest/wikipage/%s", baseUrl, wikiId);
-        String json = get(tmpUrl);
+        String json = getWithResultCheck(tmpUrl);
         MarkupDto markupDto = objectMapper.readValue(json, MarkupDto.class);
         return markupDto.getMarkup();
     }
@@ -233,25 +231,47 @@ public class CodebeamerApiClient {
     }
 
     private String get(String url) throws IOException {
-        HttpGet get = new HttpGet(url);
-        get.setConfig(requestConfig);
-        HttpResponse response = client.execute(get);
-        int statusCode = response.getStatusLine().getStatusCode();
-
+        HttpGet get = null;
         String result = null;
-        if (statusCode == 200) {
-            result = new BasicResponseHandler().handleResponse(response);
+        try {
+        	get = new HttpGet(url);
+	        get.setConfig(requestConfig);
+	        HttpResponse response = client.execute(get);
+	        int statusCode = response.getStatusLine().getStatusCode();
+	
+	        if (statusCode == 200) {
+	            result = new BasicResponseHandler().handleResponse(response);
+	        }
+	
+	        get.releaseConnection();
+	
+        } finally {
+        	if (get != null) {
+    			get.releaseConnection();
+    		}
         }
-
-        get.releaseConnection();
-
         return result;
     }
 
-    private CredentialsProvider getCredentialsProvider(String username, String password) {
-        CredentialsProvider provider = new BasicCredentialsProvider();
-        UsernamePasswordCredentials credentials = new UsernamePasswordCredentials(username, password);
-        provider.setCredentials(AuthScope.ANY, credentials);
-        return provider;
+    private String getWithResultCheck(String url) throws IOException {
+    	String result = "";
+    	HttpGet get = null;
+    	try {
+	        get = new HttpGet(url);
+	        get.setConfig(requestConfig);
+	        HttpResponse response = client.execute(get);
+	        int statusCode = response.getStatusLine().getStatusCode();
+	
+	        if (statusCode == 200) {
+	            result = new BasicResponseHandler().handleResponse(response);
+	        } else {
+	        	throw new IOException(String.format("Could not connect to host: %s", url));
+	        }
+    	} finally {
+    		if (get != null) {
+    			get.releaseConnection();
+    		}
+    	}
+        return result;
     }
 }
